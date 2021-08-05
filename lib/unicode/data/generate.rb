@@ -45,7 +45,7 @@ module Unicode
         # Get all of the general category metadata
         zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
           if line.start_with?("# General_Category") .. line.start_with?("# @missing")
-            match = /^gc ; (?<abbrev>[^\s]+)\s+; (?<name>[^\s]+)\s+(?:; (?<aliased>[^\s]+)\s+)?(?:\# (?<subsets>[^\s]+)\s+)?$/.match(line)
+            match = /^gc ; (?<abbrev>[^\s]+)\s+; (?<name>[^\s]+)\s+(?:; (?<aliased>[^\s]+)\s+)?(?:\# (?<subsets>[^\s]+))?/.match(line)
             next if match.nil?
   
             general_categories[match[:abbrev]] =
