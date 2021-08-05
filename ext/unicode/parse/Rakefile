@@ -1,0 +1,95 @@
+# frozen_string_literal: true
+
+require "rake/clean"
+require "open-uri"
+require "zip"
+
+CLOBBER.include("lib/unicode/parse/data/*")
+
+module Unicode
+  module Parse
+    Character = Struct.new(:value, :name, keyword_init: true)
+    GeneralCategory = Struct.new(:abbrev, :name, :aliased, :subsets, keyword_init: true)
+  end
+end
+
+desc "Download the unicode data file necessary for the current version of Ruby"
+task :default do
+  target = "#{ENV.fetch("RUBYARCHDIR", File.expand_path("../../../lib", __dir__))}/unicode/parse/data"
+  mkdir_p(target)
+
+  general_categories = {}
+  general_categories_to_characters = {}
+
+  characters = {}
+
+  URI.open("https://www.unicode.org/Public/#{RbConfig::CONFIG["UNICODE_VERSION"]}/ucd/UCD.zip") do |file|
+    Zip::File.open_buffer(file) do |zipfile|
+      # First, parse all of the aliases so that we can get a list of all of the
+      # different properties for each character.
+      zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
+        if line.start_with?("# General_Category") .. line.start_with?("# @missing")
+          match = /^gc ; (?<abbrev>\w+)\s+; (?<name>\w+)\s+(?:; (?<aliased>\w+)\s+)?(?:\# (?<subsets>.+)\s+)?$/.match(line)
+          next if match.nil?
+
+          general_category =
+            Unicode::Parse::GeneralCategory.new(
+              abbrev: match[:abbrev],
+              name: match[:name],
+              aliased: match[:aliased],
+              subsets: match[:subsets]&.split(" | ")
+            )
+
+          general_categories[general_category.abbrev] = general_category
+          general_categories_to_characters[general_category] = []
+        end
+      end
+
+      # Next, parse through the actual unicode data list to assign characters to
+      # all of the relevant properties.
+      zipfile.get_input_stream("UnicodeData.txt").each_line do |line|
+        value, name, general_category, = line.split(";")
+        value = value.to_i(16)
+
+        character = Unicode::Parse::Character.new(value: value, name: name)
+
+        characters[character.value] = character
+        general_categories_to_characters[general_categories[general_category]] << character
+      end
+    end
+  end
+
+  # Write out each general category into its own text file.
+  general_categories.each do |abbrev, general_category|
+    # Get all of the codepoint values for each character that is contained
+    # within this general category.
+    values =
+      if general_category.subsets
+        general_category.subsets.flat_map do |subset|
+          general_categories_to_characters[general_categories[subset]].map(&:value)
+        end
+      else
+        general_categories_to_characters[general_category].map(&:value)
+      end
+
+    # Validate that we're correct in our category derivation by checking against
+    # the built-in ruby regular expressions.
+    values.each do |value|
+      # Skip over surrogates as they are not valid in UTF-8.
+      next if general_categories_to_characters[general_categories["Cs"]].include?(characters[value])
+
+      # Raise an error if the character that we're saying belongs to a
+      # particular general category disagrees with Ruby's interpretation.
+      raise unless /\p{#{abbrev}}/.match?([value].pack("U"))
+    end
+
+    # Write it out to a file that will be used later for matching.
+    File.open("#{target}/#{abbrev}.txt", "w") do |file|
+      values
+        .chunk_while { |prev, curr| curr - prev == 1 }
+        .each do |chunk|
+          file.puts(chunk.length > 1 ? "#{chunk[0]}-#{chunk[-1]}" : chunk[0])
+        end
+    end
+  end
+end
