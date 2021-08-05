@@ -45,14 +45,23 @@ module Unicode
         # we can skip them when validating since they're not valid in UTF-8.
         @surrogates =
           each_value(
-            File.join(__dir__, "derived/general_categories/Surrogate.txt"),
+            File.join(__dir__, "derived/Surrogate.txt"),
             Mode::Full.new
           ).to_a
       end
 
       def validate
-        validate_general_categories
-        validate_ages
+        Dir[File.join(__dir__, "derived/*")].each do |filepath|
+          property = File.basename(filepath, ".txt")
+          pattern = /\p{#{property}}/
+
+          logger.info("Validating #{filepath}")
+
+          each_value(filepath, mode) do |value|
+            next if surrogates.include?(value)
+            raise unless pattern.match?([value].pack("U"))
+          end
+        end
       end
 
       def self.call
@@ -71,32 +80,6 @@ module Unicode
           when /^(\d+)..(\d+)$/
             mode.apply($1.to_i..$2.to_i, &block)
           end
-        end
-      end
-
-      def validate_each(directory, &block)
-        Dir[File.join(__dir__, "derived/#{directory}/*")].each do |filepath|
-          property = block.call(filepath)
-          pattern = /\p{#{property}}/
-
-          logger.info("Validating #{filepath}")
-
-          each_value(filepath, mode) do |value|
-            next if surrogates.include?(value)
-            raise unless pattern.match?([value].pack("U"))
-          end
-        end
-      end
-
-      def validate_general_categories
-        validate_each("general_categories") do |filepath|
-          File.basename(filepath, ".txt")
-        end
-      end
-
-      def validate_ages
-        validate_each("ages") do |filepath|
-          "age=#{File.basename(filepath, ".txt")}"
         end
       end
     end

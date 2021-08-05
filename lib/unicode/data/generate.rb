@@ -26,7 +26,10 @@ module Unicode
 
         URI.open("https://www.unicode.org/Public/#{unicode_version}/ucd/UCD.zip") do |file|
           Zip::File.open_buffer(file) do |zipfile|
-            new(File.expand_path("derived", __dir__), zipfile).generate
+            target = File.expand_path("derived", __dir__)
+            FileUtils.mkdir_p(target)
+
+            new(target, zipfile).generate
           end
         end
       end
@@ -37,7 +40,6 @@ module Unicode
 
       # https://www.unicode.org/reports/tr44/#General_Category_Values
       def generate_general_categories
-        FileUtils.mkdir_p(File.join(target, "general_categories"))
         general_categories = {} # abbrev => GeneralCategory
 
         # Get all of the general category metadata
@@ -74,7 +76,7 @@ module Unicode
           filenames << general_category.aliased if general_category.aliased
 
           filenames.each do |filename|
-            filepath = "#{target}/general_categories/#{filename}.txt"
+            filepath = "#{target}/#{filename}.txt"
             logger.info("Generating #{filepath}")
 
             # Get all of the values that are contained within this general
@@ -106,7 +108,6 @@ module Unicode
 
       # https://www.unicode.org/reports/tr44/#Character_Age
       def generate_ages
-        FileUtils.mkdir_p(File.join(target, "ages"))
         ages = {} # version => Age
 
         # Get all of the age metadata
@@ -134,7 +135,7 @@ module Unicode
         # Write out each age to its own file
         ages = ages.to_a
         ages.each_with_index do |(version, age), index|
-          filepath = "#{target}/ages/#{version}.txt"
+          filepath = "#{target}/age=#{version}.txt"
           logger.info("Generating #{filepath}")
 
           # When querying by age, something that was added in 1.1 will also
