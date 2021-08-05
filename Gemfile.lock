@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    unicode-parse (0.1.0)
+    unicode-data (0.1.0)
       rubyzip
 
 GEM
@@ -18,7 +18,7 @@ DEPENDENCIES
   bundler
   minitest
   rake
-  unicode-parse!
+  unicode-data!
 
 BUNDLED WITH
    2.2.24

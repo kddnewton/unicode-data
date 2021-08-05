@@ -4,7 +4,7 @@ require "bundler/gem_tasks"
 require "rake/testtask"
 
 namespace :ext do
-  load "ext/unicode/parse/Rakefile"
+  load "ext/unicode/data/Rakefile"
 end
 
 Rake::TestTask.new(:test) do |t|

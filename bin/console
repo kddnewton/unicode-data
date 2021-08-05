@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require "bundler/setup"
-require "unicode/parse"
+require "unicode/data"
 
 require "irb"
 IRB.start(__FILE__)
