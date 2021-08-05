@@ -79,7 +79,7 @@ task :default do
     # Validate that we're correct in our category derivation by checking against
     # the built-in ruby regular expressions.
     values.each do |value|
-      # Skip over surrogates as they are not valid in UTF-8.
+      # Skip over validating surrogates as they are not valid in UTF-8.
       next if general_categories_to_characters[general_categories["Cs"]].include?(characters[value])
 
       # Raise an error if the character that we're saying belongs to a
