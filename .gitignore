@@ -6,3 +6,6 @@
 /pkg/
 /spec/reports/
 /tmp/
+
+# Ignore all of the derived data
+/lib/unicode/data/derived
