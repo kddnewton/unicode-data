@@ -1,10 +1,11 @@
 # frozen_string_literal: true
 
-require "rake/clean"
 require "open-uri"
+require "rake/clean"
 require "zip"
 
-CLOBBER.include("lib/unicode/parse/data/*")
+# Make sure we clean up after ourselves if the user runs rake clean.
+CLEAN.include("lib/unicode/parse/data")
 
 module Unicode
   module Parse
