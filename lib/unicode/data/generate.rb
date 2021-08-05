@@ -70,31 +70,34 @@ module Unicode
 
         # Write out each general category to its own file
         general_categories.each do |abbrev, general_category|
-          # Write it out to a file that will be used later for matching.
-          filename = "#{abbrev}-#{general_category.name}"
-          filename = "#{filename}-#{general_category.aliased}" if general_category.aliased
+          filenames = [abbrev, general_category.name]
+          filenames << general_category.aliased if general_category.aliased
 
-          filepath = "#{target}/general_categories/#{filename}.txt"
-          logger.info("Generating #{filepath}")
+          filenames.each do |filename|
+            filepath = "#{target}/general_categories/#{filename}.txt"
+            logger.info("Generating #{filepath}")
 
-          # Get all of the values that are contained within this general
-          # category
-          values =
-            if general_category.subsets
-              general_category.subsets.flat_map { |subset| general_categories[subset].values }
-            else
-              general_category.values
-            end
-  
-          # Make sure we flatten out any ranges
-          values = values.flat_map { |value| [*value] }
-  
-          File.open(filepath, "w") do |file|
-            values
-              .chunk_while { |prev, curr| curr - prev == 1 }
-              .each do |chunk|
-                file.puts(chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0])
+            # Get all of the values that are contained within this general
+            # category
+            values =
+              if general_category.subsets
+                general_category.subsets.flat_map do |subset|
+                  general_categories[subset].values
+                end
+              else
+                general_category.values
               end
+    
+            # Make sure we flatten out any ranges
+            values = values.flat_map { |value| [*value] }
+    
+            File.open(filepath, "w") do |file|
+              values
+                .chunk_while { |prev, curr| curr - prev == 1 }
+                .each do |chunk|
+                  file.puts(chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0])
+                end
+            end
           end
         end
       end
