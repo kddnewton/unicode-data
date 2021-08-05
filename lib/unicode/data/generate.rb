@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "fileutils"
 require "logger"
 require "open-uri"
 require "zip"
@@ -8,11 +7,11 @@ require "zip"
 module Unicode
   module Data
     class Generate
-      attr_reader :target, :zipfile, :logger
+      attr_reader :zipfile, :outfile, :logger
 
-      def initialize(target, zipfile, logger: Logger.new(STDOUT))
-        @target = target
+      def initialize(zipfile, outfile, logger: Logger.new(STDOUT))
         @zipfile = zipfile
+        @outfile = outfile
         @logger = logger
       end
 
@@ -26,10 +25,9 @@ module Unicode
 
         URI.open("https://www.unicode.org/Public/#{unicode_version}/ucd/UCD.zip") do |file|
           Zip::File.open_buffer(file) do |zipfile|
-            target = File.expand_path("derived", __dir__)
-            FileUtils.mkdir_p(target)
-
-            new(target, zipfile).generate
+            File.open(File.join(__dir__, "derived.txt"), "w") do |outfile|
+              new(zipfile, outfile).generate
+            end
           end
         end
       end
@@ -72,12 +70,11 @@ module Unicode
 
         # Write out each general category to its own file
         general_categories.each do |abbrev, general_category|
-          filenames = [abbrev, general_category.name]
-          filenames << general_category.aliased if general_category.aliased
+          queries = [abbrev, general_category.name]
+          queries << general_category.aliased if general_category.aliased
 
-          filenames.each do |filename|
-            filepath = "#{target}/#{filename}.txt"
-            logger.info("Generating #{filepath}")
+          queries.each do |query|
+            logger.info("Generating #{query}")
 
             # Get all of the values that are contained within this general
             # category
@@ -91,15 +88,11 @@ module Unicode
               end
     
             # Make sure we flatten out any ranges
-            values = values.flat_map { |value| [*value] }
-    
-            File.open(filepath, "w") do |file|
-              values
-                .chunk_while { |prev, curr| curr - prev == 1 }
-                .each do |chunk|
-                  file.puts(chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0])
-                end
-            end
+            values
+              .flat_map { |value| [*value] }
+              .chunk_while { |prev, curr| curr - prev == 1 }
+              .map { |chunk| chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0] }
+              .then { |mapped| outfile.puts("#{query} #{mapped.join(",")}") }
           end
         end
       end
@@ -135,8 +128,8 @@ module Unicode
         # Write out each age to its own file
         ages = ages.to_a
         ages.each_with_index do |(version, age), index|
-          filepath = "#{target}/age=#{version}.txt"
-          logger.info("Generating #{filepath}")
+          query = "age=#{version}"
+          logger.info("Generating #{query}")
 
           # When querying by age, something that was added in 1.1 will also
           # match at \p{age=2.0} query, so we need to get every value from all
@@ -149,13 +142,10 @@ module Unicode
               .sort
   
           # Write it out to a file that will be used later for matching.
-          File.open(filepath, "w") do |file|
-            values
-              .chunk_while { |prev, curr| curr - prev == 1 }
-              .each do |chunk|
-                file.puts(chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0])
-              end
-          end
+          values
+            .chunk_while { |prev, curr| curr - prev == 1 }
+            .map { |chunk| chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0] }
+            .then { |mapped| outfile.puts("#{query} #{mapped.join(",")}") }
         end
       end
     end

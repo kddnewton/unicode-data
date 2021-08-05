@@ -43,21 +43,24 @@ module Unicode
 
         # This is a list of all of the surrogate characters that exist so that
         # we can skip them when validating since they're not valid in UTF-8.
-        @surrogates =
-          each_value(
-            File.join(__dir__, "derived/Surrogate.txt"),
-            Mode::Full.new
-          ).to_a
+        File.foreach(File.join(__dir__, "derived.txt"), chomp: true) do |line|
+          property, values = line.split(" ", 2)
+
+          if property.start_with?("Surrogate")
+            @surrogates = each_value(values, Mode::Full.new).to_a
+            break
+          end
+        end
       end
 
       def validate
-        Dir[File.join(__dir__, "derived/*")].each do |filepath|
-          property = File.basename(filepath, ".txt")
+        File.foreach(File.join(__dir__, "derived.txt"), chomp: true) do |line|
+          property, values = line.split(" ", 2)
           pattern = /\p{#{property}}/
 
-          logger.info("Validating #{filepath}")
+          logger.info("Validating #{property}")
 
-          each_value(filepath, mode) do |value|
+          each_value(values, mode) do |value|
             next if surrogates.include?(value)
             raise unless pattern.match?([value].pack("U"))
           end
@@ -70,11 +73,11 @@ module Unicode
 
       private
 
-      def each_value(filepath, mode, &block)
-        return enum_for(__method__, filepath, mode) unless block_given?
+      def each_value(values, mode, &block)
+        return enum_for(__method__, values, mode) unless block_given?
 
-        File.foreach(filepath, chomp: true) do |line|
-          case line
+        values.split(",").each do |value|
+          case value
           when /^(\d+)$/
             block.call($1.to_i)
           when /^(\d+)..(\d+)$/

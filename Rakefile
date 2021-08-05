@@ -8,8 +8,7 @@ require "rake/clean"
 require "rake/testtask"
 require "unicode/data"
 
-# Make sure we clean up after ourselves if the user runs rake clean.
-CLEAN.include(File.join(lib, "unicode/data/derived"))
+CLEAN.include(File.join(lib, "unicode/data/derived.txt"))
 
 namespace :ext do
   load "ext/unicode/data/Rakefile"
