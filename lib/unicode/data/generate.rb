@@ -1,17 +1,19 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "logger"
 require "open-uri"
 require "zip"
 
 module Unicode
   module Data
     class Generate
-      attr_reader :target, :zipfile
+      attr_reader :target, :zipfile, :logger
 
-      def initialize(target, zipfile)
+      def initialize(target, zipfile, logger: Logger.new(STDOUT))
         @target = target
         @zipfile = zipfile
+        @logger = logger
       end
 
       def generate
@@ -68,6 +70,13 @@ module Unicode
 
         # Write out each general category to its own file
         general_categories.each do |abbrev, general_category|
+          # Write it out to a file that will be used later for matching.
+          filename = "#{abbrev}-#{general_category.name}"
+          filename = "#{filename}-#{general_category.aliased}" if general_category.aliased
+
+          filepath = "#{target}/general_categories/#{filename}.txt"
+          logger.info("Generating #{filepath}")
+
           # Get all of the values that are contained within this general
           # category
           values =
@@ -80,11 +89,7 @@ module Unicode
           # Make sure we flatten out any ranges
           values = values.flat_map { |value| [*value] }
   
-          # Write it out to a file that will be used later for matching.
-          filename = "#{abbrev}-#{general_category.name}"
-          filename = "#{filename}-#{general_category.aliased}" if general_category.aliased
-  
-          File.open("#{target}/general_categories/#{filename}.txt", "w") do |file|
+          File.open(filepath, "w") do |file|
             values
               .chunk_while { |prev, curr| curr - prev == 1 }
               .each do |chunk|
@@ -126,6 +131,9 @@ module Unicode
         # Write out each age to its own file
         ages = ages.to_a
         ages.each_with_index do |(version, age), index|
+          filepath = "#{target}/ages/#{version}.txt"
+          logger.info("Generating #{filepath}")
+
           # When querying by age, something that was added in 1.1 will also
           # match at \p{age=2.0} query, so we need to get every value from all
           # of the preceeding ages as well.
@@ -137,7 +145,7 @@ module Unicode
               .sort
   
           # Write it out to a file that will be used later for matching.
-          File.open("#{target}/ages/#{version}.txt", "w") do |file|
+          File.open(filepath, "w") do |file|
             values
               .chunk_while { |prev, curr| curr - prev == 1 }
               .each do |chunk|
