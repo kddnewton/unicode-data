@@ -72,28 +72,20 @@ module Unicode
         general_categories.each do |abbrev, general_category|
           queries = [abbrev, general_category.name]
           queries << general_category.aliased if general_category.aliased
+          queries.map! { |value| "General_Category=#{value}" }
 
-          queries.each do |query|
-            logger.info("Generating #{query}")
-
-            # Get all of the values that are contained within this general
-            # category
-            values =
-              if general_category.subsets
-                general_category.subsets.flat_map do |subset|
-                  general_categories[subset].values
-                end
-              else
-                general_category.values
+          # Get all of the values that are contained within this general
+          # category
+          values =
+            if general_category.subsets
+              general_category.subsets.flat_map do |subset|
+                general_categories[subset].values
               end
-    
-            # Make sure we flatten out any ranges
-            values
-              .flat_map { |value| [*value] }
-              .chunk_while { |prev, curr| curr - prev == 1 }
-              .map { |chunk| chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0] }
-              .then { |mapped| outfile.puts("#{query} #{mapped.join(",")}") }
-          end
+            else
+              general_category.values
+            end
+
+          generate_queries(queries, values)
         end
       end
 
@@ -128,24 +120,26 @@ module Unicode
         # Write out each age to its own file
         ages = ages.to_a
         ages.each_with_index do |(version, age), index|
-          query = "age=#{version}"
-          logger.info("Generating #{query}")
-
           # When querying by age, something that was added in 1.1 will also
           # match at \p{age=2.0} query, so we need to get every value from all
           # of the preceeding ages as well.
-          values =
-            ages[0..index]
-              .flat_map do |(_version, age)|
-                age.values.flat_map { |value| [*value] }
-              end
-              .sort
-  
-          # Write it out to a file that will be used later for matching.
+          values = ages[0..index].flat_map { |(_version, age)| age.values }
+          generate_queries(["Age=#{version}"], values)
+        end
+      end
+
+      def generate_queries(queries, values)
+        serialized =
           values
+            .flat_map { |value| [*value] }
+            .sort
             .chunk_while { |prev, curr| curr - prev == 1 }
             .map { |chunk| chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0] }
-            .then { |mapped| outfile.puts("#{query} #{mapped.join(",")}") }
+            .join(",")
+
+        queries.each do |query|
+          logger.info("Generating #{query}")
+          outfile.puts("%-80s %s" % [query, serialized])
         end
       end
     end

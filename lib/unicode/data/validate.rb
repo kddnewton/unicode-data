@@ -46,7 +46,7 @@ module Unicode
         File.foreach(File.join(__dir__, "derived.txt"), chomp: true) do |line|
           property, values = line.split(" ", 2)
 
-          if property.start_with?("Surrogate")
+          if property.start_with?("General_Category=Surrogate")
             @surrogates = each_value(values, Mode::Full.new).to_a
             break
           end
@@ -55,9 +55,13 @@ module Unicode
 
       def validate
         File.foreach(File.join(__dir__, "derived.txt"), chomp: true) do |line|
-          property, values = line.split(" ", 2)
-          pattern = /\p{#{property}}/
+          property, values = line.split(/\s+/, 2)
 
+          # For general categories, we don't actually want the prefix in the
+          # property name, so here leave it out.
+          property.gsub!(/^General_Category=/, "")
+
+          pattern = /\p{#{property}}/
           logger.info("Validating #{property}")
 
           each_value(values, mode) do |value|
