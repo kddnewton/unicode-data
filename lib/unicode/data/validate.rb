@@ -57,9 +57,12 @@ module Unicode
         File.foreach(File.join(__dir__, "derived.txt"), chomp: true) do |line|
           property, values = line.split(/\s+/, 2)
 
-          # For general categories, we don't actually want the prefix in the
-          # property name, so here leave it out.
-          property.gsub!(/^General_Category=/, "")
+          # For general categories and scripts, we don't actually want the
+          # prefix in the property name, so here leave it out.
+          property.gsub!(/^(General_Category|Script)=/, "")
+
+          # For whatever reason these properties isn't supported by Ruby.
+          next if ["Katakana_Or_Hiragana", "Hrkt"].include?(property)
 
           pattern = /\p{#{property}}/
           logger.info("Validating #{property}")

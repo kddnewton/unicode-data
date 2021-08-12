@@ -18,6 +18,7 @@ module Unicode
       def generate
         generate_general_categories
         generate_ages
+        generate_scripts
       end
 
       def self.call
@@ -68,7 +69,7 @@ module Unicode
           general_categories[match[:category]].values << value
         end
 
-        # Write out each general category to its own file
+        # Write out each general category to its own line
         general_categories.each do |abbrev, general_category|
           queries = [abbrev, general_category.name]
           queries << general_category.aliased if general_category.aliased
@@ -117,7 +118,7 @@ module Unicode
           ages[match[:version]].values << value
         end
 
-        # Write out each age to its own file
+        # Write out each age to its own line
         ages = ages.to_a
         ages.each_with_index do |(version, age), index|
           # When querying by age, something that was added in 1.1 will also
@@ -125,6 +126,45 @@ module Unicode
           # of the preceeding ages as well.
           values = ages[0..index].flat_map { |(_version, age)| age.values }
           generate_queries(["Age=#{version}"], values)
+        end
+      end
+
+      Script = Struct.new(:name, :aliases, :values, keyword_init: true)
+
+      def generate_scripts
+        scripts = {} # name => Script
+
+        # Get all of the script metadata
+        zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
+          if line.start_with?("# Script") .. line.match?(/\n\n\#/m)
+            match = /^sc ; (?<alias1>\w+)\s+; (?<name>\w+)(?:\s+; (?<alias2>\w+))?/.match(line)
+            next if match.nil?
+  
+            aliases = [match[:alias1]]
+            aliases << match[:alias2] if match[:alias2]
+
+            script = Script.new(name: match[:name], aliases: aliases, values: [])
+            scripts[script.name] = script
+          end
+        end
+
+        # Get all of the character to script mappings
+        zipfile.get_input_stream("Scripts.txt").each_line do |line|
+          match = line.match(/\A(?<start>\h+)(?:\.\.(?<finish>\h+))?\s+; (?<name>\w+)/)
+          next unless match
+  
+          value = match[:start].to_i(16)
+          value = (value..match[:finish].to_i(16)) if match[:finish]
+
+          scripts[match[:name]].values << value
+        end
+
+        # Write out each script to its own line
+        scripts.each_value do |script|
+          queries =
+            ([script.name] + script.aliases).map { |value| "Script=#{value}" }
+
+          generate_queries(queries, script.values)
         end
       end
 
