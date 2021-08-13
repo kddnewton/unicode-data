@@ -19,7 +19,11 @@ module Unicode
         end
 
         def find(property, value)
-          aliases[property].find { |alias_set| alias_set.include?(value) }
+          term = value.gsub(/[- ]/, "_")
+
+          aliases[property].find do |alias_set|
+            alias_set.any? { |alias_value| alias_value.casecmp(term) == 0 }
+          end
         end
       end
 
@@ -36,6 +40,7 @@ module Unicode
         property_value_aliases = PropertyValueAliases.new(read_property_value_aliases)
 
         generate_general_categories
+        generate_blocks(property_value_aliases)
         generate_ages(property_value_aliases)
         generate_scripts(property_value_aliases)
         generate_script_extensions(property_value_aliases)
@@ -75,7 +80,7 @@ module Unicode
         {}.tap do |aliases|
           each_line("PropertyValueAliases.txt") do |line|
             type, *values = line.split(/\s*;\s*/)
-            (aliases[type] ||= []) << values
+            (aliases[type] ||= []) << values.uniq
           end
         end
       end
@@ -117,6 +122,15 @@ module Unicode
           end
 
           write_queries(queries, codepoints)
+        end
+      end
+
+      def generate_blocks(property_value_aliases)
+        read_property_codepoints("Blocks.txt").each do |block, codepoints|
+          write_queries(
+            property_value_aliases.find("blk", block).map { |value| "Block=#{value}" },
+            codepoints
+          )
         end
       end
 

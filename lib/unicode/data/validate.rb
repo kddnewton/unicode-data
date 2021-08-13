@@ -61,20 +61,27 @@ module Unicode
           # prefix in the property name, so here leave it out.
           property.gsub!(/^(General_Category|Script)=/, "")
 
-          # For whatever reason these properties isn't supported by Ruby.
-          next if ["Katakana_Or_Hiragana", "Hrkt"].include?(property)
-
-          # Ruby doesn't support Script_Extensions properties.
-          next if property.start_with?("Script_Extensions")
-
-          # Ruby doesn't support the Age=Vx_x property aliases.
-          next if property.start_with?("Age=V")
+          # Ruby doesn't support Block= syntax, it expects you to instead have
+          # no property name and have the block name begin with In_.
+          property.gsub!(/^Block=/, "In_")
 
           # Ruby doesn't support boolean property querying with values, it only
           # supports the plain property name.
           property.gsub!(/=(Yes|Y|True|T)/, "")
 
-          pattern = /\p{#{property}}/
+          pattern =
+            begin
+              /\p{#{property}}/
+            rescue RegexpError
+              # There are a fair amount of properties that we have in this gem
+              # that Ruby doesn't support natively. Things like aliases for the
+              # various blocks, script extensions, aliases for the ages, etc.
+              # In this case just rescue the error and move on since we can't
+              # validate against native.
+              logger.warn("Skipping #{property}")
+              next
+            end
+
           logger.info("Validating #{property}")
 
           each_value(values, mode) do |value|
