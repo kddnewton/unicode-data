@@ -7,8 +7,20 @@ require "zip"
 module Unicode
   module Data
     class Generate
-      class AliasSet
-        
+      class PropertyValueAliases
+        attr_reader :aliases
+
+        def initialize(aliases)
+          @aliases = aliases
+        end
+
+        def keys
+          aliases.keys
+        end
+
+        def find(property, value)
+          aliases[property].find { |alias_set| alias_set.include?(value) }
+        end
       end
 
       attr_reader :zipfile, :outfile, :logger
@@ -21,11 +33,12 @@ module Unicode
 
       def generate
         property_aliases = read_property_aliases
-        property_value_aliases = read_property_value_aliases
+        property_value_aliases = PropertyValueAliases.new(read_property_value_aliases)
 
         generate_general_categories
         generate_ages(property_value_aliases)
         generate_scripts(property_value_aliases)
+        generate_core_properties(property_aliases, property_value_aliases)
       end
 
       def self.call
@@ -42,142 +55,131 @@ module Unicode
 
       private
 
+      def each_line(filepath)
+        zipfile.get_input_stream(filepath).each_line do |line|
+          line.tap(&:chomp!).gsub!(/\s*#.*$/, "")
+          yield line unless line.empty?
+        end
+      end
+
       def read_property_aliases
         [].tap do |aliases|
-          zipfile.get_input_stream("PropertyAliases.txt").each_line do |line|
-            line.tap(&:chomp!).gsub!(/\s*#.*$/, "") # strip off comments
-            next if line.empty? # skip blank lines
-
-            aliases << line.split(/\s*;\s*/)
+          each_line("PropertyAliases.txt") do |line|
+            aliases << line.split(/\s*;\s*/).uniq
           end
         end
       end
 
       def read_property_value_aliases
         {}.tap do |aliases|
-          zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
-            line.tap(&:chomp!).gsub!(/\s*#.*$/, "") # strip off comments
-            next if line.empty? # skip blank lines
-
+          each_line("PropertyValueAliases.txt") do |line|
             type, *values = line.split(/\s*;\s*/)
             (aliases[type] ||= []) << values
           end
         end
       end
 
-      GeneralCategory = Struct.new(:name, :abbrev, :aliased, :subsets, :values, keyword_init: true)
+      GeneralCategory = Struct.new(:name, :abbrev, :aliased, :subsets, keyword_init: true)
 
       # https://www.unicode.org/reports/tr44/#General_Category_Values
       def generate_general_categories
-        general_categories = {} # abbrev => GeneralCategory
+        properties = {}
 
-        # Get all of the general category metadata
         zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
           if line.start_with?("# General_Category") .. line.start_with?("# @missing")
             match = /^gc ; (?<abbrev>[^\s]+)\s+; (?<name>[^\s]+)\s+(?:; (?<aliased>[^\s]+)\s+)?(?:\# (?<subsets>[^\s]+))?/.match(line)
             next if match.nil?
   
-            general_categories[match[:abbrev]] =
+            properties[match[:abbrev]] =
               GeneralCategory.new(
                 name: match[:name],
                 abbrev: match[:abbrev],
                 aliased: match[:aliased],
-                subsets: match[:subsets]&.split(" | "),
-                values: []
+                subsets: match[:subsets]&.split(" | ")
               )
           end
         end
   
-        # Get all of the character to general category mappings
-        zipfile.get_input_stream("extracted/DerivedGeneralCategory.txt").each_line do |line|
-          match = line.match(/\A(?<start>\h+)(?:\.\.(?<finish>\h+))?\s+; (?<category>\w+) \#/)
-          next unless match
-  
-          value = match[:start].to_i(16)
-          value = (value..match[:finish].to_i(16)) if match[:finish]
-  
-          general_categories[match[:category]].values << value
-        end
+        general_categories = read_property_codepoints("extracted/DerivedGeneralCategory.txt")
+        general_categories.each do |abbrev, codepoints|
+          general_category = properties[abbrev]
 
-        # Write out each general category to its own line
-        general_categories.each do |abbrev, general_category|
           queries = [abbrev, general_category.name]
           queries << general_category.aliased if general_category.aliased
           queries.map! { |value| "General_Category=#{value}" }
 
-          # Get all of the values that are contained within this general
-          # category
-          values =
-            if general_category.subsets
+          if general_category.subsets
+            codepoints =
               general_category.subsets.flat_map do |subset|
-                general_categories[subset].values
+                general_categories[subset]
               end
-            else
-              general_category.values
-            end
+          end
 
-          generate_queries(queries, values)
+          write_queries(queries, codepoints)
         end
       end
 
       # https://www.unicode.org/reports/tr44/#Character_Age
       def generate_ages(property_value_aliases)
-        ages = {}
-
-        zipfile.get_input_stream("DerivedAge.txt").each_line do |line|
-          match = line.match(/\A(?<start>\h+)(?:\.\.(?<finish>\h+))?\s+; (?<version>\d+\.\d)+/)
-          next unless match
-  
-          value = match[:start].to_i(16)
-          value = (value..match[:finish].to_i(16)) if match[:finish]
-  
-          (ages[match[:version]] ||= []) << value
-        end
-
-        ages = ages.to_a
+        ages = read_property_codepoints("DerivedAge.txt").to_a
         ages.each_with_index do |(version, _values), index|
           # When querying by age, something that was added in 1.1 will also
           # match at \p{age=2.0} query, so we need to get every value from all
           # of the preceeding ages as well.
-          values = ages[0..index].flat_map(&:last)
-
-          queries =
-            property_value_aliases["age"]
-              .find { |alias_set| alias_set.include?(version) }
-              .map { |value| "Age=#{value}" }
-
-          generate_queries(queries, values)
+          write_queries(
+            property_value_aliases.find("age", version).map { |value| "Age=#{value}" },
+            ages[0..index].flat_map(&:last)
+          )
         end
       end
 
       # https://www.unicode.org/reports/tr24/
       def generate_scripts(property_value_aliases)
-        scripts = {}
-
-        zipfile.get_input_stream("Scripts.txt").each_line do |line|
-          match = line.match(/\A(?<start>\h+)(?:\.\.(?<finish>\h+))?\s+; (?<name>\w+)/)
-          next unless match
-  
-          value = match[:start].to_i(16)
-          value = (value..match[:finish].to_i(16)) if match[:finish]
-
-          (scripts[match[:name]] ||= []) << value
-        end
-
-        scripts.each do |name, values|
-          queries =
-            property_value_aliases["sc"]
-              .find { |alias_set| alias_set.include?(name) }
-              .map { |value| "Script=#{value}" }
-
-          generate_queries(queries, values)
+        read_property_codepoints("Scripts.txt").each do |script, codepoints|
+          write_queries(
+            property_value_aliases.find("sc", script).map { |value| "Script=#{value}" },
+            codepoints
+          )
         end
       end
 
-      def generate_queries(queries, values)
+      def generate_core_properties(property_aliases, property_value_aliases)
+        read_property_codepoints("DerivedCoreProperties.txt").each do |property, codepoints|
+          property_alias_set =
+            property_aliases.find { |alias_set| alias_set.include?(property) }
+
+          property_value_alias_key =
+            (property_alias_set & property_value_aliases.keys).first
+
+          queries =
+            property_value_aliases.find(property_value_alias_key, "True")
+              .map { |value| "#{property}=#{value}" }
+
+          write_queries(queries, codepoints)
+        end
+      end
+
+      def read_property_codepoints(filepath)
+        {}.tap do |properties|
+          each_line(filepath) do |line|
+            codepoint, property = line.split(/\s*;\s*/)
+            codepoint =
+              if codepoint.include?("..")
+                left, right = codepoint.split("..").map { |value| value.to_i(16) }
+                left..right
+              else
+                codepoint.to_i(16)
+              end
+
+            (properties[property] ||= []) << codepoint
+          end
+        end
+      end
+
+      def write_queries(queries, codepoints)
         serialized =
-          values
-            .flat_map { |value| [*value] }
+          codepoints
+            .flat_map { |codepoint| [*codepoint] }
             .sort
             .chunk_while { |prev, curr| curr - prev == 1 }
             .map { |chunk| chunk.length > 1 ? "#{chunk[0]}..#{chunk[-1]}" : chunk[0] }

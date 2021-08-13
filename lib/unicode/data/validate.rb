@@ -64,6 +64,13 @@ module Unicode
           # For whatever reason these properties isn't supported by Ruby.
           next if ["Katakana_Or_Hiragana", "Hrkt"].include?(property)
 
+          # Ruby doesn't support the Age=V1_1 property aliases.
+          next if property.start_with?("Age=V")
+
+          # Ruby doesn't support boolean property querying with values, it only
+          # supports the plain property name.
+          property.gsub!(/=(Yes|Y|True|T)/, "")
+
           pattern = /\p{#{property}}/
           logger.info("Validating #{property}")
 
