@@ -64,7 +64,10 @@ module Unicode
           # For whatever reason these properties isn't supported by Ruby.
           next if ["Katakana_Or_Hiragana", "Hrkt"].include?(property)
 
-          # Ruby doesn't support the Age=V1_1 property aliases.
+          # Ruby doesn't support Script_Extensions properties.
+          next if property.start_with?("Script_Extensions")
+
+          # Ruby doesn't support the Age=Vx_x property aliases.
           next if property.start_with?("Age=V")
 
           # Ruby doesn't support boolean property querying with values, it only

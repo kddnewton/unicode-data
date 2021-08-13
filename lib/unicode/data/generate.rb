@@ -38,6 +38,7 @@ module Unicode
         generate_general_categories
         generate_ages(property_value_aliases)
         generate_scripts(property_value_aliases)
+        generate_script_extensions(property_value_aliases)
         generate_core_properties(property_aliases, property_value_aliases)
       end
 
@@ -138,6 +139,25 @@ module Unicode
         read_property_codepoints("Scripts.txt").each do |script, codepoints|
           write_queries(
             property_value_aliases.find("sc", script).map { |value| "Script=#{value}" },
+            codepoints
+          )
+        end
+      end
+
+      def generate_script_extensions(property_value_aliases)
+        script_extensions = {}
+
+        read_property_codepoints("ScriptExtensions.txt").each do |script_extension_set, codepoints|
+          script_extension_set.split(" ").each do |script_extension|
+            script_extensions[script_extension] ||= []
+            script_extensions[script_extension] += codepoints
+          end
+        end
+
+        script_extensions.each do |script_extension, codepoints|
+          write_queries(
+            property_value_aliases.find("sc", script_extension)
+              .map { |value| "Script_Extensions=#{value}" },
             codepoints
           )
         end
