@@ -108,6 +108,8 @@ module Unicode
         end
   
         general_categories = read_property_codepoints("extracted/DerivedGeneralCategory.txt")
+        general_category_codepoints = {}
+
         general_categories.each do |abbrev, codepoints|
           general_category = properties[abbrev]
 
@@ -122,8 +124,16 @@ module Unicode
               end
           end
 
+          general_category_codepoints[abbrev] = codepoints
           write_queries(queries, codepoints)
         end
+
+        # https://unicode.org/reports/tr18/#General_Category_Property  
+        # There are a couple of special categories that are defined that we will
+        # handle here.
+        write_queries(["Any"], [0..0x10FFFF])
+        write_queries(["Assigned"], (0..0x10FFFF).to_a - general_category_codepoints["Cn"].flat_map { |codepoint| [*codepoint] })
+        write_queries(["ASCII"], [0..0x7F])
       end
 
       def generate_blocks(property_value_aliases)
