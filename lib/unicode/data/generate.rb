@@ -45,6 +45,7 @@ module Unicode
         generate_scripts(property_value_aliases)
         generate_script_extensions(property_value_aliases)
         generate_core_properties(property_aliases, property_value_aliases)
+        generate_prop_list_properties(property_aliases, property_value_aliases)
       end
 
       def self.call
@@ -185,11 +186,19 @@ module Unicode
           property_value_alias_key =
             (property_alias_set & property_value_aliases.keys).first
 
-          queries =
-            property_value_aliases.find(property_value_alias_key, "True")
-              .map { |value| "#{property}=#{value}" }
+          write_queries(["#{property_value_alias_key}=True"], codepoints)
+        end
+      end
 
-          write_queries(queries, codepoints)
+      def generate_prop_list_properties(property_aliases, property_value_aliases)
+        read_property_codepoints("PropList.txt").each do |property, codepoints|
+          property_alias_set =
+            property_aliases.find { |alias_set| alias_set.include?(property) }
+
+          property_value_alias_key =
+            (property_alias_set & property_value_aliases.keys).first
+
+          write_queries(["#{property_value_alias_key}=True"], codepoints)
         end
       end
 
