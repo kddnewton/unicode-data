@@ -115,7 +115,7 @@ module Unicode
 
           queries = [abbrev, general_category.name]
           queries << general_category.aliased if general_category.aliased
-          queries.map! { |value| "General_Category=#{value}" }
+          queries.map! { |value| "\\p{General_Category=#{value}}" }
 
           if general_category.subsets
             codepoints =
@@ -131,15 +131,15 @@ module Unicode
         # https://unicode.org/reports/tr18/#General_Category_Property  
         # There are a couple of special categories that are defined that we will
         # handle here.
-        write_queries(["Any"], [0..0x10FFFF])
-        write_queries(["Assigned"], (0..0x10FFFF).to_a - general_category_codepoints["Cn"].flat_map { |codepoint| [*codepoint] })
-        write_queries(["ASCII"], [0..0x7F])
+        write_queries(["\\p{Any}"], [0..0x10FFFF])
+        write_queries(["\\p{Assigned}"], (0..0x10FFFF).to_a - general_category_codepoints["Cn"].flat_map { |codepoint| [*codepoint] })
+        write_queries(["\\p{ASCII}"], [0..0x7F])
       end
 
       def generate_blocks(property_value_aliases)
         read_property_codepoints("Blocks.txt").each do |block, codepoints|
           write_queries(
-            property_value_aliases.find("blk", block).map { |value| "Block=#{value}" },
+            property_value_aliases.find("blk", block).map { |value| "\\p{Block=#{value}}" },
             codepoints
           )
         end
@@ -153,7 +153,7 @@ module Unicode
           # match at \p{age=2.0} query, so we need to get every value from all
           # of the preceeding ages as well.
           write_queries(
-            property_value_aliases.find("age", version).map { |value| "Age=#{value}" },
+            property_value_aliases.find("age", version).map { |value| "\\p{Age=#{value}}" },
             ages[0..index].flat_map(&:last)
           )
         end
@@ -163,7 +163,7 @@ module Unicode
       def generate_scripts(property_value_aliases)
         read_property_codepoints("Scripts.txt").each do |script, codepoints|
           write_queries(
-            property_value_aliases.find("sc", script).map { |value| "Script=#{value}" },
+            property_value_aliases.find("sc", script).map { |value| "\\p{Script=#{value}}" },
             codepoints
           )
         end
@@ -182,7 +182,7 @@ module Unicode
         script_extensions.each do |script_extension, codepoints|
           write_queries(
             property_value_aliases.find("sc", script_extension)
-              .map { |value| "Script_Extensions=#{value}" },
+              .map { |value| "\\p{Script_Extensions=#{value}}" },
             codepoints
           )
         end
@@ -196,7 +196,7 @@ module Unicode
           property_value_alias_key =
             (property_alias_set & property_value_aliases.keys).first
 
-          write_queries(["#{property_value_alias_key}=True"], codepoints)
+          write_queries(["\\p{#{property_value_alias_key}=True}"], codepoints)
         end
       end
 
@@ -208,7 +208,7 @@ module Unicode
           property_value_alias_key =
             (property_alias_set & property_value_aliases.keys).first
 
-          write_queries(["#{property_value_alias_key}=True"], codepoints)
+          write_queries(["\\p{#{property_value_alias_key}=True}"], codepoints)
         end
       end
 
