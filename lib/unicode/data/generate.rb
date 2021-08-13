@@ -7,6 +7,10 @@ require "zip"
 module Unicode
   module Data
     class Generate
+      class AliasSet
+        
+      end
+
       attr_reader :zipfile, :outfile, :logger
 
       def initialize(zipfile, outfile, logger: Logger.new(STDOUT))
@@ -16,9 +20,12 @@ module Unicode
       end
 
       def generate
+        property_aliases = read_property_aliases
+        property_value_aliases = read_property_value_aliases
+
         generate_general_categories
-        generate_ages
-        generate_scripts
+        generate_ages(property_value_aliases)
+        generate_scripts(property_value_aliases)
       end
 
       def self.call
@@ -34,6 +41,29 @@ module Unicode
       end
 
       private
+
+      def read_property_aliases
+        [].tap do |aliases|
+          zipfile.get_input_stream("PropertyAliases.txt").each_line do |line|
+            line.tap(&:chomp!).gsub!(/\s*#.*$/, "") # strip off comments
+            next if line.empty? # skip blank lines
+
+            aliases << line.split(/\s*;\s*/)
+          end
+        end
+      end
+
+      def read_property_value_aliases
+        {}.tap do |aliases|
+          zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
+            line.tap(&:chomp!).gsub!(/\s*#.*$/, "") # strip off comments
+            next if line.empty? # skip blank lines
+
+            type, *values = line.split(/\s*;\s*/)
+            (aliases[type] ||= []) << values
+          end
+        end
+      end
 
       GeneralCategory = Struct.new(:name, :abbrev, :aliased, :subsets, :values, keyword_init: true)
 
@@ -90,24 +120,10 @@ module Unicode
         end
       end
 
-      Age = Struct.new(:version, :values, keyword_init: true)
-
       # https://www.unicode.org/reports/tr44/#Character_Age
-      def generate_ages
-        ages = {} # version => Age
+      def generate_ages(property_value_aliases)
+        ages = {}
 
-        # Get all of the age metadata
-        zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
-          if line.start_with?("# Age") .. line.match?(/\n\n\#/m)
-            match = /^age; (?<version>\d+\.\d+)\s+/.match(line)
-            next if match.nil?
-  
-            age = Age.new(version: match[:version], values: [])
-            ages[age.version] = age
-          end
-        end
-  
-        # Get all of the character to age mappings
         zipfile.get_input_stream("DerivedAge.txt").each_line do |line|
           match = line.match(/\A(?<start>\h+)(?:\.\.(?<finish>\h+))?\s+; (?<version>\d+\.\d)+/)
           next unless match
@@ -115,40 +131,29 @@ module Unicode
           value = match[:start].to_i(16)
           value = (value..match[:finish].to_i(16)) if match[:finish]
   
-          ages[match[:version]].values << value
+          (ages[match[:version]] ||= []) << value
         end
 
-        # Write out each age to its own line
         ages = ages.to_a
-        ages.each_with_index do |(version, age), index|
+        ages.each_with_index do |(version, _values), index|
           # When querying by age, something that was added in 1.1 will also
           # match at \p{age=2.0} query, so we need to get every value from all
           # of the preceeding ages as well.
-          values = ages[0..index].flat_map { |(_version, age)| age.values }
-          generate_queries(["Age=#{version}"], values)
+          values = ages[0..index].flat_map(&:last)
+
+          queries =
+            property_value_aliases["age"]
+              .find { |alias_set| alias_set.include?(version) }
+              .map { |value| "Age=#{value}" }
+
+          generate_queries(queries, values)
         end
       end
 
-      Script = Struct.new(:name, :aliases, :values, keyword_init: true)
+      # https://www.unicode.org/reports/tr24/
+      def generate_scripts(property_value_aliases)
+        scripts = {}
 
-      def generate_scripts
-        scripts = {} # name => Script
-
-        # Get all of the script metadata
-        zipfile.get_input_stream("PropertyValueAliases.txt").each_line do |line|
-          if line.start_with?("# Script") .. line.match?(/\n\n\#/m)
-            match = /^sc ; (?<alias1>\w+)\s+; (?<name>\w+)(?:\s+; (?<alias2>\w+))?/.match(line)
-            next if match.nil?
-  
-            aliases = [match[:alias1]]
-            aliases << match[:alias2] if match[:alias2]
-
-            script = Script.new(name: match[:name], aliases: aliases, values: [])
-            scripts[script.name] = script
-          end
-        end
-
-        # Get all of the character to script mappings
         zipfile.get_input_stream("Scripts.txt").each_line do |line|
           match = line.match(/\A(?<start>\h+)(?:\.\.(?<finish>\h+))?\s+; (?<name>\w+)/)
           next unless match
@@ -156,15 +161,16 @@ module Unicode
           value = match[:start].to_i(16)
           value = (value..match[:finish].to_i(16)) if match[:finish]
 
-          scripts[match[:name]].values << value
+          (scripts[match[:name]] ||= []) << value
         end
 
-        # Write out each script to its own line
-        scripts.each_value do |script|
+        scripts.each do |name, values|
           queries =
-            ([script.name] + script.aliases).map { |value| "Script=#{value}" }
+            property_value_aliases["sc"]
+              .find { |alias_set| alias_set.include?(name) }
+              .map { |value| "Script=#{value}" }
 
-          generate_queries(queries, script.values)
+          generate_queries(queries, values)
         end
       end
 
