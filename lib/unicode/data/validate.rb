@@ -86,7 +86,10 @@ module Unicode
 
           each_value(values, mode) do |value|
             next if surrogates.include?(value)
-            raise unless pattern.match?([value].pack("U"))
+
+            unless pattern.match?([value].pack("U"))
+              raise "Expected #{value} to match #{property}"
+            end
           end
         end
       end
