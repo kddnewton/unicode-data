@@ -1,5 +1,8 @@
 # Unicode::Data
 
+[![Build Status](https://github.com/kddnewton/unicode-data/workflows/Main/badge.svg)](https://github.com/kddnewton/unicode-data/actions)
+[![Gem](https://img.shields.io/gem/v/unicode-data.svg)](https://rubygems.org/gems/unicode-data)
+
 A Ruby wrapping for the unicode character data set.
 
 ## Installation
